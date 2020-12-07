@@ -5,12 +5,16 @@ import {
 } from 'serialize-error';
 import type {
   InterceptorType,
+  ConnectionContextType,
 } from 'slonik';
 import {
   filter,
   map,
 } from 'inline-loops.macro';
 import prettyMs from 'pretty-ms';
+import type {
+  LoggerType,
+} from 'roarr';
 import {
   getAutoExplainPayload,
   isAutoExplainJsonMessage,
@@ -20,6 +24,7 @@ import {
  * @property logValues Dictates whether to include parameter values used to execute the query. (default: true)
  */
 type UserConfigurationType = {|
+  +logger: (context: ConnectionContextType) => LoggerType,
   +logValues: boolean,
 |};
 
@@ -28,6 +33,9 @@ const stringifyCallSite = (callSite) => {
 };
 
 const defaultConfiguration = {
+  logger: (context: ConnectionContextType) => {
+    return context.log;
+  },
   logValues: true,
 };
 
@@ -47,13 +55,13 @@ export default (userConfiguration?: UserConfigurationType): InterceptorType => {
 
       for (const notice of result.notices) {
         if (isAutoExplainJsonMessage(notice.message)) {
-          context.log.info({
+          configuration.logger(context).info({
             autoExplain: getAutoExplainPayload(notice.message),
           }, 'auto explain');
         }
       }
 
-      context.log.debug({
+      configuration.logger(context).debug({
         executionTime: prettyMs(Number(process.hrtime.bigint() - context.queryInputTime) / 1000000),
         rowCount,
       }, 'query execution result');
@@ -87,7 +95,7 @@ export default (userConfiguration?: UserConfigurationType): InterceptorType => {
         });
       }
 
-      context.log.debug({
+      configuration.logger(context).debug({
         sql: query.sql,
         stackTrace,
         values,
@@ -96,7 +104,7 @@ export default (userConfiguration?: UserConfigurationType): InterceptorType => {
       return null;
     },
     queryExecutionError: (context, query, error) => {
-      context.log.error({
+      configuration.logger(context).error({
         error: serializeError(error),
       }, 'query execution produced an error');
 
